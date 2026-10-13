@@ -60,7 +60,9 @@ public final class CampusRush extends JPanel {
             button.setPreferredSize(new Dimension(275, 110)); button.setFont(new Font("SansSerif", Font.PLAIN, 14));
             button.setBackground(Color.WHITE); button.setForeground(INK); button.setFocusPainted(false);
             button.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(218, 224, 218)), new EmptyBorder(14, 14, 14, 10)));
-            button.addActionListener(e -> { if (slot < game.deliveries.size()) { game.travelTo(game.deliveries.get(slot).destination); refresh(); } });
+            button.addActionListener(e -> {
+                if (slot < game.deliveries.size()) travelTo(game.deliveries.get(slot).destination);
+            });
             requestButtons[i] = button; board.add(button); board.add(Box.createVerticalStrut(12));
         }
         board.add(Box.createVerticalGlue());
@@ -75,7 +77,7 @@ public final class CampusRush extends JPanel {
         start.addActionListener(e -> newGame()); pause.addActionListener(e -> togglePause());
         JButton help = new JButton("How to play"); help.addActionListener(e -> showHelp());
         controls.add(start); controls.add(pause); controls.add(help); footer.add(controls, BorderLayout.WEST);
-        JLabel caption = new JLabel("Mouse + menu + timer events  /  Java Swing PoC"); caption.setForeground(TEAL);
+        JLabel caption = new JLabel("Mouse, key, item, menu, timer events  /  Java Swing"); caption.setForeground(TEAL);
         footer.add(caption, BorderLayout.EAST); root.add(footer, BorderLayout.SOUTH);
 
         // Swing Timer fires on the event-dispatch thread, keeping UI and model in sync.
@@ -101,8 +103,15 @@ public final class CampusRush extends JPanel {
         pauseMenu.addActionListener(e -> togglePause()); menu.add(pauseMenu);
         JMenu difficulty = new JMenu("Difficulty (next shift)"); ButtonGroup group = new ButtonGroup();
         group.add(easy); group.add(hard); difficulty.add(easy); difficulty.add(hard);
-        easy.addActionListener(e -> { status.setText("Easy selected for the next shift."); });
-        hard.addActionListener(e -> { status.setText("Hard selected for the next shift."); });
+        ItemListener difficultyListener = e -> {
+            if (e.getStateChange() == ItemEvent.SELECTED) {
+                String selected = e.getSource() == easy ? "Easy" : "Hard";
+                game.message = selected + " selected for the next shift.";
+                refresh();
+            }
+        };
+        easy.addItemListener(difficultyListener);
+        hard.addItemListener(difficultyListener);
         menu.add(difficulty); menu.addSeparator();
         JMenuItem exit = new JMenuItem("Exit"); exit.addActionListener(e -> {
             Window window = SwingUtilities.getWindowAncestor(this);
@@ -111,7 +120,7 @@ public final class CampusRush extends JPanel {
         JMenu help = new JMenu("Help"); JMenuItem instructions = new JMenuItem("How to play");
         instructions.addActionListener(e -> showHelp()); help.add(instructions);
         JMenuItem about = new JMenuItem("About / Event classes");
-        about.addActionListener(e -> pausedDialog("Campus Rush - Java Swing proof of concept\n\nMouseListener: click a building\nMouseMotionListener: hover a building\nActionListener: buttons, menu items, and timer ticks\njavax.swing.Timer: movement, deadlines, request generation\n\nNo external assets or libraries.", "About")); help.add(about);
+        about.addActionListener(e -> pausedDialog("Campus Rush - Java Swing proof of concept\n\nMouseListener: click a building\nMouseMotionListener: hover a building\nKeyListener via KeyAdapter: arrows select; Enter travels\nItemListener: Easy/Hard selection\nActionListener: buttons, command menu items, and timer ticks\njavax.swing.Timer: movement, deadlines, request generation\n\nNo external assets or libraries.", "About")); help.add(about);
         bar.add(menu); bar.add(help); return bar;
     }
 
@@ -121,12 +130,18 @@ public final class CampusRush extends JPanel {
             int answer = JOptionPane.showConfirmDialog(this, "Restart this shift? Current progress will be reset.", "New Game", JOptionPane.YES_NO_OPTION);
             if (answer != JOptionPane.YES_OPTION) { if (wasRunning) game.state = GameModel.State.RUNNING; lastTick = System.nanoTime(); refresh(); return; }
         }
-        game.start(hard.isSelected()); lastTick = System.nanoTime(); refresh();
+        game.start(hard.isSelected()); map.clearKeyboardSelection(); lastTick = System.nanoTime(); refresh();
+    }
+
+    private void travelTo(int building) {
+        map.selectBuilding(building);
+        game.travelTo(building);
+        refresh();
     }
 
     private void togglePause() { game.togglePause(); lastTick = System.nanoTime(); refresh(); }
     private void showHelp() {
-        pausedDialog("Complete as many deliveries as possible in a two-minute shift.\n\n1. Start a shift. Your bag already contains every requested item.\n2. Click a building or delivery card to move the runner there.\n3. On arrival, matching requests are delivered automatically.\n4. Beat each request's deadline to earn points and a time bonus.\n\nYou may redirect the runner while moving. New requests appear regularly.\nEasy: faster runner, 35-second new requests.\nHard: slower runner, 22-second new requests.\n\nPause freezes movement, deadlines, and new requests.\nChoose difficulty from Game before starting your next shift.", "How to play");
+        pausedDialog("Complete as many deliveries as possible in a two-minute shift.\n\n1. Start a shift. Your bag already contains every requested item.\n2. Click a building or delivery card to move the runner there.\n3. Click an open map area to focus it, use the arrow keys to select a building, and press Enter to travel there.\n4. On arrival, matching requests are delivered automatically.\n5. Beat each request's deadline to earn points and a time bonus.\n\nYou may redirect the runner while moving. New requests appear regularly.\nEasy: faster runner, 35-second new requests.\nHard: slower runner, 22-second new requests.\n\nPause freezes movement, deadlines, and new requests.\nChoose difficulty from Game before starting your next shift.", "How to play");
     }
     private void pausedDialog(String text, String title) {
         boolean wasRunning = game.state == GameModel.State.RUNNING;
@@ -160,10 +175,15 @@ public final class CampusRush extends JPanel {
     private final class CampusMap extends JPanel {
         private static final long serialVersionUID = 1L;
         private int hovered = -1;
+        private int keyboardSelected = -1;
         CampusMap() {
-            setBackground(new Color(232, 240, 227)); setPreferredSize(new Dimension(700, 500));
+            setBackground(new Color(232, 240, 227)); setPreferredSize(new Dimension(700, 500)); setFocusable(true);
             addMouseListener(new MouseAdapter() {
-                @Override public void mouseClicked(MouseEvent e) { int b = buildingAt(e.getPoint()); if (b >= 0) { game.travelTo(b); refresh(); } }
+                @Override public void mouseClicked(MouseEvent e) {
+                    requestFocusInWindow();
+                    int b = buildingAt(e.getPoint());
+                    if (b >= 0) travelTo(b);
+                }
                 @Override public void mouseExited(MouseEvent e) { hovered = -1; setToolTipText(null); repaint(); }
             });
             addMouseMotionListener(new MouseMotionAdapter() {
@@ -172,7 +192,37 @@ public final class CampusRush extends JPanel {
                     setToolTipText(hovered >= 0 ? GameModel.BUILDINGS[hovered] + ": click to travel and deliver matching requests" : null); repaint();
                 }
             });
+            addKeyListener(new KeyAdapter() {
+                @Override public void keyPressed(KeyEvent e) {
+                    if (game.state != GameModel.State.RUNNING) return;
+                    int direction = 0;
+                    switch (e.getKeyCode()) {
+                        case KeyEvent.VK_LEFT:
+                        case KeyEvent.VK_UP:
+                            direction = -1;
+                            break;
+                        case KeyEvent.VK_RIGHT:
+                        case KeyEvent.VK_DOWN:
+                            direction = 1;
+                            break;
+                        case KeyEvent.VK_ENTER:
+                            if (keyboardSelected >= 0) travelTo(keyboardSelected);
+                            e.consume();
+                            return;
+                        default:
+                            return;
+                    }
+                    int buildingCount = GameModel.BUILDINGS.length;
+                    keyboardSelected = keyboardSelected < 0
+                            ? (direction > 0 ? 0 : buildingCount - 1)
+                            : (keyboardSelected + direction + buildingCount) % buildingCount;
+                    repaint();
+                    e.consume();
+                }
+            });
         }
+        private void selectBuilding(int building) { keyboardSelected = building; repaint(); }
+        private void clearKeyboardSelection() { keyboardSelected = -1; repaint(); }
         private int px(double x) { return (int) (x * getWidth()); }
         private int py(double y) { return (int) (y * getHeight()); }
         private Rectangle buildingRect(int i) { return new Rectangle(px(GameModel.LOCATIONS[i][0]) - 60, py(GameModel.LOCATIONS[i][1]) - 30, 120, 60); }
@@ -197,6 +247,10 @@ public final class CampusRush extends JPanel {
                 for (GameModel.Delivery d : game.deliveries) if (d.destination == i) requests++;
                 g.setColor(new Color(0, 0, 0, 20)); g.fillRoundRect(r.x + 3, r.y + 5, r.width, r.height, 12, 12);
                 g.setColor(i == hovered || i == game.destination ? TEAL : INK); g.fillRoundRect(r.x, r.y, r.width, r.height, 12, 12);
+                if (i == keyboardSelected) {
+                    g.setColor(new Color(232, 116, 62)); g.setStroke(new BasicStroke(3));
+                    g.drawRoundRect(r.x - 4, r.y - 4, r.width + 8, r.height + 8, 16, 16);
+                }
                 g.setColor(Color.WHITE); String name = GameModel.BUILDINGS[i];
                 g.drawString(name, r.x + (r.width - g.getFontMetrics().stringWidth(name)) / 2, r.y + 27);
                 g.setFont(new Font("SansSerif", Font.PLAIN, 10)); String sub = i == 0 ? "RUNNER BASE" : "CLICK TO TRAVEL";
@@ -207,7 +261,7 @@ public final class CampusRush extends JPanel {
             g.setColor(new Color(232, 116, 62)); g.fillOval(rx - 12, ry - 12, 24, 24);
             g.setStroke(new BasicStroke(3)); g.setColor(Color.WHITE); g.drawOval(rx - 12, ry - 12, 24, 24);
             g.setColor(INK); g.setFont(new Font("SansSerif", Font.BOLD, 11)); g.drawString("YOU", rx - 12, ry + 29);
-            g.setFont(new Font("SansSerif", Font.PLAIN, 12)); g.drawString("CAMPUS MAP  /  Click a building to set your destination", 20, 27);
+            g.setFont(new Font("SansSerif", Font.PLAIN, 12)); g.drawString("CAMPUS MAP  /  Arrows select; Enter travels", 20, 27);
             if (game.state != GameModel.State.RUNNING) {
                 g.setColor(new Color(247, 247, 239, 230)); g.fillRoundRect(getWidth() / 2 - 155, getHeight() / 2 - 32, 310, 64, 16, 16);
                 String text = game.state == GameModel.State.READY ? "READY FOR YOUR FIRST SHIFT?" : game.state == GameModel.State.PAUSED ? "SHIFT PAUSED" : "SHIFT COMPLETE";

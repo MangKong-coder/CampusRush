@@ -19,13 +19,17 @@ New requests appear every 9 seconds on Easy or every 6 seconds on Hard, capped a
 
 Pause freezes movement, deadlines, and new requests. Instructions and About dialogs pause a running game automatically and resume it when closed. Restart asks before discarding a live shift. Results appear when the shift ends. Hover buildings for details.
 
+For keyboard travel, click an open area of the campus map to focus it, use the arrow keys to select a building, then press Enter to set it as the destination. The selected building is outlined in orange.
+
 ## Event mapping
 
 | Event or Swing class | Implementation |
 | --- | --- |
 | `MouseListener` via `MouseAdapter` | Building click and mouse exit in `CampusMap` |
 | `MouseMotionListener` via `MouseMotionAdapter` | Building hover, cursor, and tooltip |
-| `ActionListener` | Buttons, menu selections, and timer callback |
+| `KeyListener` via `KeyAdapter` | Arrow-key building selection and Enter-to-travel on the focused map |
+| `ItemListener` | Easy/Hard radio menu selection, responding only to the selected item |
+| `ActionListener` | Buttons, command menu items, and timer callback |
 | `JMenuBar`, `JMenu`, `JMenuItem`, `JRadioButtonMenuItem` | Game, difficulty, help, and exit menus |
 | `javax.swing.Timer` | 40 ms game loop: runner animation, countdowns, generation, and end-of-game |
 | `JPanel.paintComponent` | Campus map, highlighted route, runner, request badges, and overlays |
@@ -35,7 +39,7 @@ Confirm your instructor's exact required event classes: the assignment screensho
 
 ## Source layout
 
-- `src/main/java/campusrush/CampusRush.java`: window, menus, mouse handlers, rendering, timer.
+- `src/main/java/campusrush/CampusRush.java`: window, layout, menus, mouse/key/item handlers, rendering, timer.
 - `src/main/java/campusrush/GameModel.java`: game state, movement, deliveries, scoring, difficulty.
 - `src/test/java/campusrush/GameModelChecks.java`: dependency-free game-rule regression checks.
 
@@ -43,7 +47,7 @@ The UI is created on the Swing event-dispatch thread. The Swing timer updates ga
 
 ## Verification of this proof of concept
 
-Built successfully with Apache NetBeans' bundled Maven and compiled against the Java 8 API. Focused model checks passed. Swing components were rendered and visually inspected offscreen. A desktop launch and manual NetBeans interaction could not be verified because the build session has no desktop display. No separate linter is configured; Java compiler lint was used. This is a working source PoC, not a completed assignment submission.
+The current sources compile against the Java 8 API with Java compiler lint enabled, and Apache NetBeans' bundled Maven builds the application JAR successfully. The standalone game-model checks passed. A desktop run and manual interaction with the new keyboard and difficulty controls were not exercised during this verification. No separate linter is configured. This is a source proof of concept, not a completed assignment submission.
 
 ## Build without NetBeans
 
@@ -68,4 +72,4 @@ On Windows, replace the classpath separator `:` with `;`. The checks are a stand
 
 ## Short demo sequence
 
-Start Easy, click Engineering, show the score after arrival, redirect to Library, pause and show frozen countdowns, resume, hover a building, then select Hard and restart. Show About to explain which event classes drive each interaction.
+Start Easy, click an open map area and use an arrow key plus Enter to travel, then click Engineering and show the score after arrival. Redirect to Library, pause and show frozen countdowns, resume, hover a building, then select Hard and restart. Show About to explain the mouse, key, item, action, menu, and timer event handling.
